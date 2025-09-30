@@ -51,7 +51,7 @@ describe("OrbitDB Entry Loading from Blockstore", function () {
     console.log("\n📝 Step 1: Alice creates DB and adds entries");
     const db1 = await orbitdb1.open("test-db", {
       type: "events",
-      AccessController: IPFSAccessController({ write: ["*"] }),
+      // AccessController: IPFSAccessController({ write: ["*"] }),
     });
 
     await db1.add("Entry 1");
