@@ -69,6 +69,7 @@ describe("OrbitDB Entry Loading from Blockstore", function () {
     console.log("\n🔍 Step 2: Extracting all blocks from Alice's blockstore");
     const allBlocks = [];
     const dbAddress = db1.address;
+    const identities = new Set();
     
     // Get all CIDs from the log
     for await (const entry of db1.log.iterator()) {
@@ -76,9 +77,27 @@ describe("OrbitDB Entry Loading from Blockstore", function () {
         const cid = CID.parse(entry.hash);
         const bytes = await ipfs1.blockstore.get(cid);
         allBlocks.push({ cid, bytes });
-        console.log(`   Extracted block: ${cid.toString().slice(0, 20)}...`);
+        console.log(`   Extracted entry block: ${cid.toString().slice(0, 20)}...`);
+        
+        // Track identity hash
+        if (entry.identity) {
+          identities.add(entry.identity);
+        }
       } catch (error) {
         console.error(`   Failed to extract block: ${error.message}`);
+      }
+    }
+    
+    // Get identity blocks
+    console.log(`   Found ${identities.size} unique identities`);
+    for (const identityHash of identities) {
+      try {
+        const cid = CID.parse(identityHash);
+        const bytes = await ipfs1.blockstore.get(cid);
+        allBlocks.push({ cid, bytes });
+        console.log(`   Extracted identity block: ${cid.toString().slice(0, 20)}...`);
+      } catch (error) {
+        console.error(`   Failed to extract identity: ${error.message}`);
       }
     }
     

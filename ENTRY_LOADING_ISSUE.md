@@ -92,6 +92,20 @@ After investigating the OrbitDB source code and the `orbitdb-storacha-bridge` li
 
 The blocks need to be explicitly loaded or replayed into the log. Simply having blocks in the blockstore is not sufficient.
 
+### Key Finding: Heads Storage
+
+OrbitDB stores the log heads **separately** from the entry blocks:
+- **Entry blocks** are stored in the blockstore (IPFS/Helia)
+- **Heads** (the tips of the log DAG) are stored in LevelDB at `${directory}/log/_heads/`
+- **Entry index** (which entries exist) is stored in LevelDB at `${directory}/log/_index/`
+
+When opening a database, OrbitDB:
+1. Loads the heads from LevelDB
+2. Uses the heads to know which entries are the current state
+3. Does NOT scan the blockstore for all entries
+
+If the heads storage is empty (as in a fresh restore), OrbitDB has no starting point to traverse the log DAG, even if all blocks are present in the blockstore.
+
 ### Evidence from Source Code
 
 Looking at `orbitdb-storacha-bridge/lib/orbitdb-storacha-bridge.js`, the `restoreDatabaseFromSpace` function does much more than just putting blocks in storage:

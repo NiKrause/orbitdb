@@ -70,11 +70,31 @@ describe('Storage Restore - Same Node (Working Case)', function () {
     const logEntries = await db1.log.values()
     console.log(`  📝 Found ${logEntries.length} log entries`)
     
+    // Track unique identities
+    const identities = new Set()
+    
     // Save each entry block
     for (const entry of logEntries) {
       const blockBytes = await db1.log.storage.get(entry.hash)
       savedBlocks.set(entry.hash, blockBytes)
-      console.log(`  💾 Saved block: ${entry.hash.substring(0, 20)}...`)
+      console.log(`  💾 Saved entry block: ${entry.hash.substring(0, 20)}...`)
+      
+      // Track the identity hash from this entry
+      if (entry.identity) {
+        identities.add(entry.identity)
+      }
+    }
+    
+    // Save identity blocks
+    console.log(`  🆔 Found ${identities.size} unique identities`)
+    for (const identityHash of identities) {
+      try {
+        const identityBytes = await db1.log.storage.get(identityHash)
+        savedBlocks.set(identityHash, identityBytes)
+        console.log(`  💾 Saved identity block: ${identityHash.substring(0, 20)}...`)
+      } catch (error) {
+        console.error(`  ❌ Failed to save identity ${identityHash.substring(0, 20)}...: ${error.message}`)
+      }
     }
     
     // Get manifest CID
@@ -92,7 +112,7 @@ describe('Storage Restore - Same Node (Working Case)', function () {
       console.log(`  💾 Saved access controller: ${acCID.substring(0, 20)}...`)
     }
 
-    console.log(`  ✅ Backed up ${savedBlocks.size} blocks`)
+    console.log(`  ✅ Backed up ${savedBlocks.size} blocks total`)
     notStrictEqual(savedBlocks.size, 0, 'Should have backed up blocks')
   })
 
