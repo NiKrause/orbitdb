@@ -15,10 +15,11 @@
 
 import { strictEqual, notStrictEqual } from 'assert'
 import { rimraf } from 'rimraf'
-import { mkdir } from 'fs/promises'
+import { mkdir, readFile, writeFile } from 'fs/promises'
 import { CID } from 'multiformats/cid'
 import OrbitDB from '../src/orbitdb.js'
 import createHelia from './utils/create-helia.js'
+import { Level } from 'level'
 
 const dbPath1 = './orbitdb/tests/storage-restore-same-node/alice-1'
 const dbPath2 = './orbitdb/tests/storage-restore-same-node/alice-2'
@@ -29,6 +30,8 @@ describe('Storage Restore - Same Node (Working Case)', function () {
 
   let ipfs1, ipfs2, orbitdb1, orbitdb2, db1
   let savedBlocks = new Map()
+  let savedHeads = null
+  let savedIndex = new Map()
 
   before(async () => {
     await rimraf('./orbitdb/tests/storage-restore-same-node')
@@ -114,6 +117,44 @@ describe('Storage Restore - Same Node (Working Case)', function () {
 
     console.log(`  ✅ Backed up ${savedBlocks.size} blocks total`)
     notStrictEqual(savedBlocks.size, 0, 'Should have backed up blocks')
+    
+    // Backup heads from LevelDB
+    console.log('  📥 Backing up heads from LevelDB')
+    try {
+      const headsPath = `${dbPath1}/orbitdb/${db1.address}/log/_heads`
+      const headsDb = new Level(headsPath, { valueEncoding: 'view' })
+      await headsDb.open()
+      const headsBytes = await headsDb.get('heads')
+      await headsDb.close()
+      
+      if (headsBytes) {
+        savedHeads = headsBytes
+        const decoder = new TextDecoder()
+        const heads = JSON.parse(decoder.decode(headsBytes))
+        console.log(`  💾 Saved heads: ${heads.length} head(s)`)
+        heads.forEach(h => console.log(`     - ${h.hash.substring(0, 20)}...`))
+      }
+    } catch (error) {
+      console.error(`  ⚠️  Could not backup heads: ${error.message}`)
+    }
+    
+    // Backup index from LevelDB
+    console.log('  📥 Backing up index from LevelDB')
+    try {
+      const indexPath = `${dbPath1}/orbitdb/${db1.address}/log/_index`
+      const indexDb = new Level(indexPath, { valueEncoding: 'view' })
+      await indexDb.open()
+      
+      // Get all entries from the index
+      for await (const [key, value] of indexDb.iterator()) {
+        savedIndex.set(key, value)
+      }
+      
+      await indexDb.close()
+      console.log(`  💾 Saved index: ${savedIndex.size} entries`)
+    } catch (error) {
+      console.error(`  ⚠️  Could not backup index: ${error.message}`)
+    }
   })
 
   it('Alice stops her node and cleans up directories', async () => {
@@ -159,6 +200,45 @@ describe('Storage Restore - Same Node (Working Case)', function () {
     }
     
     console.log(`  ✅ Restored ${savedBlocks.size} blocks`)
+    
+    // Restore heads to LevelDB BEFORE opening database
+    if (savedHeads) {
+      console.log('  📥 Restoring heads to LevelDB')
+      try {
+        const headsPath = `${dbPath2}/orbitdb/${this.dbAddress}/log/_heads`
+        await mkdir(headsPath, { recursive: true })
+        const headsDb = new Level(headsPath, { valueEncoding: 'view' })
+        await headsDb.open()
+        await headsDb.put('heads', savedHeads)
+        await headsDb.close()
+        
+        const decoder = new TextDecoder()
+        const heads = JSON.parse(decoder.decode(savedHeads))
+        console.log(`  ✅ Restored heads: ${heads.length} head(s)`)
+      } catch (error) {
+        console.error(`  ❌ Failed to restore heads: ${error.message}`)
+      }
+    }
+    
+    // Restore index to LevelDB BEFORE opening database
+    if (savedIndex.size > 0) {
+      console.log('  📥 Restoring index to LevelDB')
+      try {
+        const indexPath = `${dbPath2}/orbitdb/${this.dbAddress}/log/_index`
+        await mkdir(indexPath, { recursive: true })
+        const indexDb = new Level(indexPath, { valueEncoding: 'view' })
+        await indexDb.open()
+        
+        for (const [hash, value] of savedIndex.entries()) {
+          await indexDb.put(hash, value)
+        }
+        
+        await indexDb.close()
+        console.log(`  ✅ Restored index: ${savedIndex.size} entries`)
+      } catch (error) {
+        console.error(`  ❌ Failed to restore index: ${error.message}`)
+      }
+    }
   })
 
   it('Alice opens the restored database and sees all entries', async () => {
