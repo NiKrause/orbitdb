@@ -3,6 +3,11 @@ name: Run Tests
 
 on: [push, pull_request]
 
+# CI-only branch for verifying the #1255 fix in a browser: Node is pinned to 22
+# (lts/* resolves to Node 26, where c8 fails to load yargs) and the browser job
+# runs on a self-hosted Aleph runner on Ubuntu 24.04 (Playwright 1.50.1 does not
+# support Ubuntu 26.04, which ubuntu-latest now is). Not part of the PR.
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -10,7 +15,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
-          node-version: 'lts/*'
+          node-version: 22
           registry-url: https://registry.npmjs.org/
       - name: Install dependencies
         run: npm ci
@@ -19,15 +24,19 @@ jobs:
       - name: Run tests
         run: npm run test:ci
   test-browser:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, aleph]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
-          node-version: 'lts/*'
+          node-version: 22
           registry-url: https://registry.npmjs.org/
+      - name: Machine
+        run: nproc && free -m && lsb_release -ds
       - name: Install dependencies
         run: npm ci
+      - name: Install Chromium system libraries
+        run: npx playwright-core install-deps chromium
       - name: Run linter
         run: npm run lint
       - name: Run a webrtc relay in the background
